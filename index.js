@@ -2,9 +2,9 @@ const express = require("express");
 const app = express();
 // const mongoose = require("mongoose");
 var bodyParser = require("body-parser");
-// const mongoose = require("mongoose");
-const { MongoClient, ServerApiVersion } = require("mongodb");
 
+const { MongoClient, ServerApiVersion } = require("mongodb");
+const nodemailer = require("nodemailer");
 const client = new MongoClient(
   "mongodb+srv://saxenaman903:7iBj7Pkhtfj2bMGl@cluster0.j2jkj8p.mongodb.net/",
   {
@@ -22,8 +22,18 @@ client.connect();
 require("dotenv").config();
 console.log(process.env);
 
+// app.post("/webhookapp",express.raw({ type: "application/json" }),webhook);
+
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
+
+app.use((req, res, next) => {
+  if (req.originalUrl === "/webhookapp") {
+    next();
+  } else {
+    express.json()(req, res, next);
+  }
+});
 
 const router = require("./router/pay-router");
 
@@ -68,8 +78,8 @@ app.set("db", mockDb);
 app.post("/create-checkout-session", async (req, res) => {
   try {
     const session = await stripe.checkout.sessions.create({
-      success_url: "https://0193-103-44-53-141.ngrok-free.app/success_url",
-      cancel_url: "https://0193-103-44-53-141.ngrok-free.app/cancel_url",
+      success_url: "https://899f-103-44-53-141.ngrok-free.app/success_url",
+      cancel_url: "https://899f-103-44-53-141.ngrok-free.app/cancel_url",
       line_items: [
         {
           price: "price_1OAeYqSILhT441ffSs02kev1", // Replace with your actual price ID
@@ -164,46 +174,47 @@ app.post("/create-subscription12", async (req, res) => {
   }
 });
 
+// var endpointSecret = `whsec_UPuEOz1t24XhuNAsQUrgv7hjUVmzxvOS`;
+// app.post(
 
+//   "/webhook",
+//   bodyParser.raw({ type: "application/json" }),
+//   (req, res) => {
+//     const sig = req.headers["stripe-signature"];
+//     const body = req.body;
 
+//     console.log("Received webhook request with signature:", sig);
+//     console.log("Received webhook request body:", body.toString());
 
+//     try {
+//       var event = stripe.webhooks.constructEvent(
+//         body,
+//         sig,
+//         "whsec_2g3zQPrYuoMm9tdxkeZfnnxNfJUdbY6t"
+//       );
 
-app.post("/webhook",bodyParser.raw({ type: "application/json" }),(req, res) => {
-    const sig = req.headers["stripe-signature"];
-    const body = req.body;
+//       console.log("Webhook event:", event);
 
-    console.log("Received webhook request with signature:", sig);
-    // console.log("Received webhook request body:", body.toString());
+//       switch (event.type) {
+//         case "payment_intent.succeeded":
+//           const paymentIntent = event.data.object;
+//           console.log(`PaymentIntent was successful!`);
+//           break;
+//         case "invoice.payment_succeeded":
+//           const invoice = event.data.object;
+//           console.log(`Invoice payment succeeded!`);
+//           break;
+//         default:
+//           console.log(`Unhandled event type ${event.type}`);
+//       }
 
-    try {
-      var event = stripe.webhooks.constructEvent(
-        body,
-        sig,
-        "whsec_2g3zQPrYuoMm9tdxkeZfnnxNfJUdbY6t"
-      );
-     
-      console.log("Webhook event:", event);
-
-      switch (event.type) {
-        case "payment_intent.succeeded":
-          const paymentIntent = event.data.object;
-          console.log(`PaymentIntent was successful!`);
-          break;
-        case "invoice.payment_succeeded":
-          const invoice = event.data.object;
-          console.log(`Invoice payment succeeded!`);
-          break;
-        default:
-          console.log(`Unhandled event type ${event.type}`);
-      }
-
-      res.json({ received: true });
-    } catch (err) {
-      console.error("⚠️ Webhook signature verification failed.", err.message);
-      return res.status(400).send(`Webhook Error: ${err.message}`);
-    }
-  }
-);
+//       res.json({ received: true });
+//     } catch (err) {
+//       console.error("⚠️ Webhook signature verification failed.", err.message);
+//       return res.status(400).send(`Webhook Error: ${err.message}`);
+//     }
+//   }
+// );
 // app.post("/create-checkout-session", async (req, res) => {
 //   try {
 //     const session = await stripe.checkout.sessions.create({
@@ -310,9 +321,122 @@ app.post("/webhook",bodyParser.raw({ type: "application/json" }),(req, res) => {
 //     res.status(500).json({ error: e.message });
 //   }
 // });
+app.post("/webhookapp",express.raw({ type: "application/json" }),async (request, response) => {
+    const sig = request.headers["stripe-signature"];
+    let session = "";
+
+    let event;
+
+    const testPayloadString = JSON.stringify(request.body, null, 2 ,sig );
+    const testSecret = "whsec_UPuEOz1t24XhuNAsQUrgv7hjUVmzxvOS";
+
+    const testHeader = stripe.webhooks.generateTestHeaderString({
+      payload: testPayloadString,
+      secret: testSecret,
+      sig 
+    });
+
+    try {
+      
+      event = stripe.webhooks.constructEvent(
+        testPayloadString,
+        testHeader,
+        testSecret
+      );
+    } catch (err) {
+      console.error("⚠️ Webhook signature verification failed.", err.message);
+      response.status(400).send(`Webhook Error: ${err.message}`);
+      return;
+    }
+
+    switch (event.type) {
+      case "checkout.session.async_payment_failed":
+        // const checkoutSessionAsyncPaymentFailed = event.data.object;
+        session = event.data.object;
+        console.log("Async payment failed:", session);
+        break;
+
+      case "checkout.session.completed":
+        // const checkoutSessionAsyncPaymentSucceeded = event.data.object;
+        session = event.data.object;
+        console.log("Payment succeeded:", session);
+
+        const emailTO = session.customer_details.email;
+        const productLink =
+          "https://drive.google.com/file/d/11IIZpIaafmlnUrGSFvkGVLu7XII3bHMH/view?usp=drive_link";
+
+        const transporter = nodemailer.createTransport({
+          host: "smtp.gmail.com",
+          port: 587,
+          secure: false,
+          auth: {
+            user: "abhinavsaxena119@gmail.com",
+            pass: "bkwgjnfawvkmpjhe",
+          },
+        });
+
+        const mailOptions = {
+          from: "abhinavsaxena119@gmail.com",
+          to: emailTO,
+          subject: "Thanks for your payment",
+          text: `Hello ${session.customer_details.email}, thanks for your payment.`,
+          html: `<p>Hello ${session.customer_details.email},</p><p>Thanks for your payment. Here is your product link: <a href="${productLink}">Download Product</a></p>`,
+        };
+
+        transporter.sendMail(mailOptions, (error, info) => {
+          if (error) {
+            console.error("Error sending email:", error);
+          } else {
+            console.log("Email sent:", info.messageId);
+          }
+        });
+        break;
+
+      default:
+        console.log(`Unhandled event type ${event.type}`);
+    }
+
+    response.json({ received: true });
+  }
+);
+
+// app.post(
+//   "/webhook1",
+//   express.raw({ type: "application/json" }),
+//   (request, response) => {
+//     const sig = request.headers["stripe-signature"];
+
+//     let event;
+
+//     try {
+//       event = stripe.webhooks.constructEvent(request.body, sig, endpointSecret);
+//     } catch (err) {
+//       response.status(400).send(`Webhook Error: ${err.message}`);
+//       return;
+//     }
+
+//     // Handle the event
+//     switch (event.type) {
+//       case "checkout.session.async_payment_failed":
+//         const checkoutSessionAsyncPaymentFailed = event.data.object;
+//         // Then define and call a function to handle the event checkout.session.async_payment_failed
+//         break;
+//       case "checkout.session.completed":
+//         const checkoutSessionCompleted = event.data.object;
+//         // Then define and call a function to handle the event checkout.session.completed
+//         break;
+//       // ... handle other event types
+//       default:
+//         console.log(`Unhandled event type ${event.type}`);
+//     }
+
+//     // Return a 200 response to acknowledge receipt of the event
+//     response.send();
+//   }
+// );
 
 app.get("/success_url", (req, res) => {
-  res.send("done");
+  res.send("PaymentIntent was successful");
 });
 
 app.get("/cancel_url", (req, res) => {
